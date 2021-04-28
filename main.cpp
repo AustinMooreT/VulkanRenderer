@@ -89,7 +89,28 @@ int main(int argc, char** argv) {
   swapChainInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
   swapChainInfo.presentMode = vk::PresentModeKHR::eMailbox; // blindly assuming mailbox presentation mode
   swapChainInfo.clipped = VK_TRUE;
-  vk::SwapchainKHR swapChain = device.createSwapchainKHR(swapChainInfo);
+  vk::SwapchainKHR swapChain{device.createSwapchainKHR(swapChainInfo)};
+
+  // Create image views
+  std::vector<vk::Image> swapChainImages{device.getSwapchainImagesKHR(swapChain)};
+  std::vector<vk::ImageView> swapChainImageViews{swapChainImages.size()};
+  std::transform(swapChainImages.begin(), swapChainImages.end(), swapChainImageViews.begin(),
+                 [&device](const vk::Image& image) -> vk::ImageView {
+                   vk::ImageViewCreateInfo imageInfo;
+                   imageInfo.image = image;
+                   imageInfo.viewType = vk::ImageViewType::e2D;
+                   imageInfo.format = vk::Format::eB8G8R8A8Srgb; // Blindly assume image format
+                   imageInfo.components.r = vk::ComponentSwizzle::eIdentity;
+                   imageInfo.components.g = vk::ComponentSwizzle::eIdentity;
+                   imageInfo.components.b = vk::ComponentSwizzle::eIdentity;
+                   imageInfo.components.a = vk::ComponentSwizzle::eIdentity;
+                   imageInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+                   imageInfo.subresourceRange.baseMipLevel = 0;
+                   imageInfo.subresourceRange.levelCount = 1;
+                   imageInfo.subresourceRange.baseArrayLayer = 0;
+                   imageInfo.subresourceRange.layerCount = 1;
+                   return device.createImageView(imageInfo);
+                 });
 
 
   return qapp.exec();
