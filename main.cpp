@@ -29,7 +29,6 @@ private:
 };
 
 int main(int argc, char** argv) {
-  
   // Basic instance setup and getting my gpu
   vk::InstanceCreateInfo instanceInfo;
   std::array<const char*, 3> instExtensions{VK_KHR_SURFACE_EXTENSION_NAME, "VK_KHR_surface", "VK_KHR_xcb_surface"};
@@ -39,7 +38,6 @@ int main(int argc, char** argv) {
   std::vector<vk::PhysicalDevice> physDevices{instance.enumeratePhysicalDevices()};
   vk::PhysicalDevice physDevice{physDevices[0]}; // Just hardcoded the index for a gpu that should have vulkan support.
   //
-
   // Queue setup to do some work.
   vk::DeviceQueueCreateInfo queueInfo;
   queueInfo.queueFamilyIndex = 0; // Hardcoded this queue family because I know it supports everything I want.
@@ -47,7 +45,6 @@ int main(int argc, char** argv) {
   queueInfo.queueCount = 1;
   queueInfo.pQueuePriorities = queuePriorities.data();
   //
-
   //Create a logical device
   vk::DeviceCreateInfo deviceInfo;
   deviceInfo.queueCreateInfoCount = 1;
@@ -57,19 +54,16 @@ int main(int argc, char** argv) {
   deviceInfo.ppEnabledExtensionNames = devExtensions.data();
   vk::Device device{physDevice.createDevice(deviceInfo)};
   //
-
   // Setup qt stuff
   QGuiApplication qapp(argc, argv);
   VulkanWindow vkWindow(instance);
   vkWindow.resize(100,100);
   vkWindow.show(); // you have to show the window before you can get it's surface.
   //
-  
   // Fetch surface and info.
   vk::SurfaceKHR surface{QVulkanInstance::surfaceForWindow(&vkWindow)};
   vk::SurfaceCapabilitiesKHR surfaceCap{physDevice.getSurfaceCapabilitiesKHR(surface)};
   //
-
   // Compute the current extent
   VkExtent2D extent{
     static_cast<uint32_t>(vkWindow.size().width()),
@@ -80,7 +74,6 @@ int main(int argc, char** argv) {
   extent.width = std::max(surfaceCap.minImageExtent.height,
                           std::min(surfaceCap.maxImageExtent.height, extent.height));
   //
-
   // Create SwapChain
   vk::SwapchainCreateInfoKHR swapChainInfo;
   swapChainInfo.surface = surface;
@@ -98,7 +91,6 @@ int main(int argc, char** argv) {
   swapChainInfo.clipped = VK_TRUE;
   vk::SwapchainKHR swapChain{device.createSwapchainKHR(swapChainInfo)};
   //
-
   // Create image views
   std::vector<vk::Image> swapChainImages{device.getSwapchainImagesKHR(swapChain)};
   std::vector<vk::ImageView> swapChainImageViews{swapChainImages.size()};
@@ -120,20 +112,49 @@ int main(int argc, char** argv) {
                    return device.createImageView(imageInfo);
                  });
   //
-
+  // Render pass setup
+  // Basic subpass setup
+  // Color buffer attachment
+  vk::AttachmentDescription colorAttachmentDescription;
+  colorAttachmentDescription.format = vk::Format::eB8G8R8A8Srgb;
+  colorAttachmentDescription.samples = vk::SampleCountFlagBits::e1;
+  colorAttachmentDescription.loadOp = vk::AttachmentLoadOp::eClear;
+  colorAttachmentDescription.storeOp = vk::AttachmentStoreOp::eStore;
+  colorAttachmentDescription.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+  colorAttachmentDescription.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+  colorAttachmentDescription.initialLayout = vk::ImageLayout::eUndefined;
+  colorAttachmentDescription.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+  vk::AttachmentReference colorAttachmentReference;
+  colorAttachmentReference.attachment = 0;
+  colorAttachmentReference.layout = vk::ImageLayout::eColorAttachmentOptimal;  
+  //
+  // Subpass creation
+  vk::SubpassDescription basicSubpass;
+  basicSubpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+  basicSubpass.colorAttachmentCount = 1;
+  basicSubpass.pColorAttachments = &colorAttachmentReference;
+  //
+  //
+  // Render pass creation
+  vk::RenderPassCreateInfo renderPassInfo;
+  renderPassInfo.attachmentCount = 1;
+  renderPassInfo.pAttachments = &colorAttachmentDescription;
+  renderPassInfo.subpassCount = 1;
+  renderPassInfo.pSubpasses = &basicSubpass;
+  vk::RenderPass renderPass = device.createRenderPass(renderPassInfo);
+  //
+  //
   // Fixed Pipeline Setup
   // Setup vertex input
   vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
   vertexInputInfo.vertexBindingDescriptionCount = 0;
   vertexInputInfo.vertexAttributeDescriptionCount = 0;
   //
-
   // Setup input assembly
   vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
   inputAssemblyInfo.topology = vk::PrimitiveTopology::eTriangleList;
   inputAssemblyInfo.primitiveRestartEnable = false;
   //
-
   // Setup viewport
   vk::Viewport viewport;
   viewport.x = 0.0f;
@@ -151,7 +172,6 @@ int main(int argc, char** argv) {
   viewPortStateInfo.scissorCount = 1;
   viewPortStateInfo.pScissors = &scissor;
   //
-
   // Setup rasterizer
   vk::PipelineRasterizationStateCreateInfo rasterizerInfo;
   rasterizerInfo.depthClampEnable = false;
@@ -162,15 +182,48 @@ int main(int argc, char** argv) {
   rasterizerInfo.frontFace = vk::FrontFace::eClockwise;
   rasterizerInfo.depthBiasEnable = false;
   //
-
   // Setup multisample
   vk::PipelineMultisampleStateCreateInfo multisamplingInfo;
   multisamplingInfo.sampleShadingEnable = false;
   multisamplingInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
   //
-
   // depth and/or stencil buffer config would happen at this stage as well, but skip it for now.
   //
+  // Setup color blending for framebuffers.
+  vk::PipelineColorBlendAttachmentState colorBlendAttachmentState;
+  colorBlendAttachmentState.colorWriteMask = vk::ColorComponentFlagBits::eR |
+    vk::ColorComponentFlagBits::eB | 
+    vk::ColorComponentFlagBits::eG |
+    vk::ColorComponentFlagBits::eA;
+  colorBlendAttachmentState.blendEnable = false;
+  vk::PipelineColorBlendStateCreateInfo colorBlendStateInfo{};
+  colorBlendStateInfo.logicOpEnable = false;
+  colorBlendStateInfo.attachmentCount = 1;
+  colorBlendStateInfo.pAttachments = &colorBlendAttachmentState;
+  //
+  // dynamic pipeline state can be specified here.
+  //
+  // Pipeline layout
+  vk::PipelineLayoutCreateInfo pipelineLayoutInfo;
+  vk::PipelineLayout pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
+  //
+  // End Fixed function pipeline setup
+  // Actually instantiate the pipeline
+  vk::GraphicsPipelineCreateInfo graphicsPipelineInfo;
+  graphicsPipelineInfo.stageCount = 2;
+  graphicsPipelineInfo.pStages; // TODO setup shaders
+  graphicsPipelineInfo.pVertexInputState = &vertexInputInfo;
+  graphicsPipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
+  graphicsPipelineInfo.pViewportState = &viewPortStateInfo;
+  graphicsPipelineInfo.pRasterizationState = &rasterizerInfo;
+  graphicsPipelineInfo.pMultisampleState = &multisamplingInfo;
+  graphicsPipelineInfo.pColorBlendState = &colorBlendStateInfo;
+  graphicsPipelineInfo.layout = pipelineLayout;
+  graphicsPipelineInfo.renderPass = renderPass;
+  graphicsPipelineInfo.subpass = 0;
+  vk::Pipeline graphicsPipeline = device.createGraphicsPipeline(VK_NULL_HANDLE, &graphicsPipelineInfo);
+  //
+  
 
   return qapp.exec();
 }
