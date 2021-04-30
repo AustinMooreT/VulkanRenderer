@@ -253,9 +253,9 @@ int main(int argc, char** argv) {
   graphicsPipelineInfo.layout = pipelineLayout;
   graphicsPipelineInfo.renderPass = renderPass;
   graphicsPipelineInfo.subpass = 0;
-  //vk::Pipeline graphicsPipeline = device.createGraphicsPipeline(VK_NULL_HANDLE, &graphicsPipelineInfo);
+  vk::Pipeline graphicsPipeline = device.createGraphicsPipeline(VK_NULL_HANDLE, graphicsPipelineInfo).value;
   //
   
-
+  
   return qapp.exec();
 }
