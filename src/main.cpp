@@ -1,7 +1,6 @@
 #include <vulkan/vulkan.hpp>
 #include <glm/glm.hpp>
 
-// TODO fuse Qt and vulkan
 #include <QApplication>
 #include <QVulkanInstance>
 #include <QWindow>
@@ -9,7 +8,8 @@
 #include <algorithm>
 #include <iostream>
 #include <array>
-#include <vulkan/vulkan_core.h>
+#include <fstream>
+#include <filesystem>
 
 class VulkanWindow : public QWindow {
 public:
@@ -208,6 +208,9 @@ int main(int argc, char** argv) {
   vk::PipelineLayout pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
   //
   // End Fixed function pipeline setup
+  // Load some shaders in.
+  std::function<std::vector<uint32_t>(std::path)> getShader;
+  //
   // Actually instantiate the pipeline
   vk::GraphicsPipelineCreateInfo graphicsPipelineInfo;
   graphicsPipelineInfo.stageCount = 2;
@@ -221,7 +224,7 @@ int main(int argc, char** argv) {
   graphicsPipelineInfo.layout = pipelineLayout;
   graphicsPipelineInfo.renderPass = renderPass;
   graphicsPipelineInfo.subpass = 0;
-  vk::Pipeline graphicsPipeline = device.createGraphicsPipeline(VK_NULL_HANDLE, &graphicsPipelineInfo);
+  //vk::Pipeline graphicsPipeline = device.createGraphicsPipeline(VK_NULL_HANDLE, &graphicsPipelineInfo);
   //
   
 

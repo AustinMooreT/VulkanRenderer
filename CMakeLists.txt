@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(VulkanRenderer)
 
+set(CMAKE_CXX_STANDARD 23)
+
 function(add_shader TARGET SHADER)
     find_program(GLSLC glslc)
 
@@ -23,10 +25,8 @@ function(add_shader TARGET SHADER)
     target_sources(${TARGET} PRIVATE ${current-output-path})
 endfunction(add_shader)
 
-
 find_package(Vulkan REQUIRED)
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
-
 
 set(SOURCES src/main.cpp)
 
