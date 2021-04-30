@@ -208,13 +208,42 @@ int main(int argc, char** argv) {
   vk::PipelineLayout pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
   //
   // End Fixed function pipeline setup
-  // Load some shaders in.
-  std::function<std::vector<uint32_t>(std::path)> getShader;
+  // Setup shader pipelin
+  std::function<std::vector<uint32_t>(const std::filesystem::path&)> getShader = 
+    [](const std::filesystem::path& filepath) {
+      std::vector<uint32_t> fileData;
+      std::ifstream shaderFile(filepath, std::ios::ate | std::ios::binary);
+      if(!shaderFile.is_open()) {
+        return fileData;
+      } else {
+        std::size_t fileSize = static_cast<std::size_t>(shaderFile.tellg());
+        shaderFile.seekg(0);
+        fileData.reserve(fileSize);
+        shaderFile.read(reinterpret_cast<char*>(fileData.data()), fileSize);
+        return fileData;
+      }
+    };
+  auto triangleVertData = getShader("shaders/triangle.vert.spv");
+  auto triangleFragData = getShader("shaders/trinagle.frag.spv");
+  vk::ShaderModuleCreateInfo triangleVertModuleInfo;
+  vk::ShaderModuleCreateInfo triangleFragModuleInfo;
+  triangleVertModuleInfo.setCode(triangleVertData);
+  triangleFragModuleInfo.setCode(triangleFragData);
+  vk::ShaderModule triangleVertShader = device.createShaderModule(triangleVertModuleInfo);
+  vk::ShaderModule triangleFragShader = device.createShaderModule(triangleFragModuleInfo);
+  vk::PipelineShaderStageCreateInfo shaderTriangleVertPipelineInfo;
+  vk::PipelineShaderStageCreateInfo shaderTriangleFragPipelineInfo;
+  shaderTriangleVertPipelineInfo.stage = vk::ShaderStageFlagBits::eVertex;
+  shaderTriangleFragPipelineInfo.stage = vk::ShaderStageFlagBits::eFragment;
+  shaderTriangleVertPipelineInfo.pName = "main";
+  shaderTriangleFragPipelineInfo.pName = "main";
+  std::array<vk::PipelineShaderStageCreateInfo, 2> shaderPipelineInfo = {shaderTriangleVertPipelineInfo,
+    shaderTriangleFragPipelineInfo};
   //
   // Actually instantiate the pipeline
   vk::GraphicsPipelineCreateInfo graphicsPipelineInfo;
-  graphicsPipelineInfo.stageCount = 2;
-  graphicsPipelineInfo.pStages; // TODO setup shaders
+  graphicsPipelineInfo.stageCount = shaderPipelineInfo.size();
+  graphicsPipelineInfo.pStages = shaderPipelineInfo.data(); // TODO setup shaders
   graphicsPipelineInfo.pVertexInputState = &vertexInputInfo;
   graphicsPipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
   graphicsPipelineInfo.pViewportState = &viewPortStateInfo;
