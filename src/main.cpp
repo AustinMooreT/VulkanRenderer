@@ -216,28 +216,28 @@ int main(int argc, char** argv) {
       if(!shaderFile.is_open()) {
         return fileData;
       } else {
-        std::size_t fileSize = static_cast<std::size_t>(shaderFile.tellg());
+        std::size_t fileSize{static_cast<std::size_t>(shaderFile.tellg())};
         shaderFile.seekg(0);
         fileData.reserve(fileSize);
         shaderFile.read(reinterpret_cast<char*>(fileData.data()), fileSize);
         return fileData;
       }
     };
-  auto triangleVertData = getShader("shaders/triangle.vert.spv");
-  auto triangleFragData = getShader("shaders/trinagle.frag.spv");
+  auto triangleVertData{getShader("shaders/triangle.vert.spv")};
+  auto triangleFragData{getShader("shaders/trinagle.frag.spv")};
   vk::ShaderModuleCreateInfo triangleVertModuleInfo;
   vk::ShaderModuleCreateInfo triangleFragModuleInfo;
   triangleVertModuleInfo.setCode(triangleVertData);
   triangleFragModuleInfo.setCode(triangleFragData);
-  vk::ShaderModule triangleVertShader = device.createShaderModule(triangleVertModuleInfo);
-  vk::ShaderModule triangleFragShader = device.createShaderModule(triangleFragModuleInfo);
+  vk::ShaderModule triangleVertShader{device.createShaderModule(triangleVertModuleInfo)};
+  vk::ShaderModule triangleFragShader{device.createShaderModule(triangleFragModuleInfo)};
   vk::PipelineShaderStageCreateInfo shaderTriangleVertPipelineInfo;
   vk::PipelineShaderStageCreateInfo shaderTriangleFragPipelineInfo;
   shaderTriangleVertPipelineInfo.stage = vk::ShaderStageFlagBits::eVertex;
   shaderTriangleFragPipelineInfo.stage = vk::ShaderStageFlagBits::eFragment;
   shaderTriangleVertPipelineInfo.pName = "main";
   shaderTriangleFragPipelineInfo.pName = "main";
-  std::array<vk::PipelineShaderStageCreateInfo, 2> shaderPipelineInfo = {shaderTriangleVertPipelineInfo,
+  std::array<vk::PipelineShaderStageCreateInfo, 2> shaderPipelineInfo{shaderTriangleVertPipelineInfo,
     shaderTriangleFragPipelineInfo};
   //
   // Actually instantiate the pipeline
@@ -253,9 +253,33 @@ int main(int argc, char** argv) {
   graphicsPipelineInfo.layout = pipelineLayout;
   graphicsPipelineInfo.renderPass = renderPass;
   graphicsPipelineInfo.subpass = 0;
-  vk::Pipeline graphicsPipeline = device.createGraphicsPipeline(VK_NULL_HANDLE, graphicsPipelineInfo).value;
+  vk::Pipeline graphicsPipeline{device.createGraphicsPipeline(VK_NULL_HANDLE, graphicsPipelineInfo).value};
+  // Create framebuffers
+  std::vector<vk::Framebuffer> frameBuffers{swapChainImageViews.size()};
+  std::transform(swapChainImageViews.begin(), swapChainImageViews.end(), frameBuffers.begin(), 
+                 [&renderPass, &extent, &device](const vk::ImageView& imageView) {
+                   std::array<vk::ImageView, 1> imageViewAttachment{imageView};
+                   vk::FramebufferCreateInfo frameBufferInfo;
+                   frameBufferInfo.renderPass = renderPass;
+                   frameBufferInfo.attachmentCount = 1;
+                   frameBufferInfo.pAttachments = imageViewAttachment.data();
+                   frameBufferInfo.width = extent.width;
+                   frameBufferInfo.height = extent.height;
+                   frameBufferInfo.layers = 1;
+                   return device.createFramebuffer(frameBufferInfo);
+                 });
+  //Setup command buffers.
+  vk::CommandPoolCreateInfo commandPoolInfo;
+  commandPoolInfo.queueFamilyIndex = 0;
+  vk::CommandPool commandPool{device.createCommandPool(commandPoolInfo)};
+  vk::CommandBufferAllocateInfo commandBufferAllocateInfo;
+  commandBufferAllocateInfo.commandPool = commandPool;
+  commandBufferAllocateInfo.level = vk::CommandBufferLevel::ePrimary;
+  commandBufferAllocateInfo.commandBufferCount = static_cast<uint32_t>(frameBuffers.size());
+  std::vector<vk::CommandBuffer> commandBuffers{device.allocateCommandBuffers(commandBufferAllocateInfo)};
+  //
   //
   
-  
+  //
   return qapp.exec();
 }
