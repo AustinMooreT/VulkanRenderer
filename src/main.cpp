@@ -1,15 +1,16 @@
 #include <vulkan/vulkan.hpp>
-#include <glm/glm.hpp>
 
 #include <QApplication>
 #include <QVulkanInstance>
 #include <QWindow>
 
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <array>
 #include <fstream>
 #include <filesystem>
+#include <ranges>
 
 class VulkanWindow : public QWindow {
 public:
@@ -94,23 +95,23 @@ int main(int argc, char** argv) {
   // Create image views
   std::vector<vk::Image> swapChainImages{device.getSwapchainImagesKHR(swapChain)};
   std::vector<vk::ImageView> swapChainImageViews{swapChainImages.size()};
-  std::transform(swapChainImages.begin(), swapChainImages.end(), swapChainImageViews.begin(),
-                 [&device](const vk::Image& image) -> vk::ImageView {
-                   vk::ImageViewCreateInfo imageInfo;
-                   imageInfo.image = image;
-                   imageInfo.viewType = vk::ImageViewType::e2D;
-                   imageInfo.format = vk::Format::eB8G8R8A8Srgb; // Blindly assume image format
-                   imageInfo.components.r = vk::ComponentSwizzle::eIdentity;
-                   imageInfo.components.g = vk::ComponentSwizzle::eIdentity;
-                   imageInfo.components.b = vk::ComponentSwizzle::eIdentity;
-                   imageInfo.components.a = vk::ComponentSwizzle::eIdentity;
-                   imageInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-                   imageInfo.subresourceRange.baseMipLevel = 0;
-                   imageInfo.subresourceRange.levelCount = 1;
-                   imageInfo.subresourceRange.baseArrayLayer = 0;
-                   imageInfo.subresourceRange.layerCount = 1;
-                   return device.createImageView(imageInfo);
-                 });
+  std::ranges::transform(swapChainImages, swapChainImageViews.begin(),
+                         [&device](const vk::Image& image) -> vk::ImageView {
+                           vk::ImageViewCreateInfo imageInfo;
+                           imageInfo.image = image;
+                           imageInfo.viewType = vk::ImageViewType::e2D;
+                           imageInfo.format = vk::Format::eB8G8R8A8Srgb; // Blindly assume image format
+                           imageInfo.components.r = vk::ComponentSwizzle::eIdentity;
+                           imageInfo.components.g = vk::ComponentSwizzle::eIdentity;
+                           imageInfo.components.b = vk::ComponentSwizzle::eIdentity;
+                           imageInfo.components.a = vk::ComponentSwizzle::eIdentity;
+                           imageInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+                           imageInfo.subresourceRange.baseMipLevel = 0;
+                           imageInfo.subresourceRange.levelCount = 1;
+                           imageInfo.subresourceRange.baseArrayLayer = 0;
+                           imageInfo.subresourceRange.layerCount = 1;
+                           return device.createImageView(imageInfo);
+                         });
   //
   // Render pass setup
   // Basic subpass setup
@@ -256,18 +257,18 @@ int main(int argc, char** argv) {
   vk::Pipeline graphicsPipeline{device.createGraphicsPipeline(VK_NULL_HANDLE, graphicsPipelineInfo).value};
   // Create framebuffers
   std::vector<vk::Framebuffer> frameBuffers{swapChainImageViews.size()};
-  std::transform(swapChainImageViews.begin(), swapChainImageViews.end(), frameBuffers.begin(), 
-                 [&renderPass, &extent, &device](const vk::ImageView& imageView) {
-                   std::array<vk::ImageView, 1> imageViewAttachment{imageView};
-                   vk::FramebufferCreateInfo frameBufferInfo;
-                   frameBufferInfo.renderPass = renderPass;
-                   frameBufferInfo.attachmentCount = 1;
-                   frameBufferInfo.pAttachments = imageViewAttachment.data();
-                   frameBufferInfo.width = extent.width;
-                   frameBufferInfo.height = extent.height;
-                   frameBufferInfo.layers = 1;
-                   return device.createFramebuffer(frameBufferInfo);
-                 });
+  std::ranges::transform(swapChainImageViews, frameBuffers.begin(), 
+                         [&renderPass, &extent, &device](const vk::ImageView& imageView) {
+                           std::array<vk::ImageView, 1> imageViewAttachment{imageView};
+                           vk::FramebufferCreateInfo frameBufferInfo;
+                           frameBufferInfo.renderPass = renderPass;
+                           frameBufferInfo.attachmentCount = 1;
+                           frameBufferInfo.pAttachments = imageViewAttachment.data();
+                           frameBufferInfo.width = extent.width;
+                           frameBufferInfo.height = extent.height;
+                           frameBufferInfo.layers = 1;
+                           return device.createFramebuffer(frameBufferInfo);
+                         });
   //Setup command buffers.
   vk::CommandPoolCreateInfo commandPoolInfo;
   commandPoolInfo.queueFamilyIndex = 0;
@@ -279,7 +280,7 @@ int main(int argc, char** argv) {
   std::vector<vk::CommandBuffer> commandBuffers{device.allocateCommandBuffers(commandBufferAllocateInfo)};
   //
   //
-  
+
   //
   return qapp.exec();
 }
