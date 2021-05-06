@@ -3,6 +3,9 @@
 #include <QApplication>
 #include <QVulkanInstance>
 #include <QWindow>
+#include <QDir>
+
+#include <range/v3/all.hpp>
 
 #include <algorithm>
 #include <functional>
@@ -280,7 +283,20 @@ int main(int argc, char** argv) {
   std::vector<vk::CommandBuffer> commandBuffers{device.allocateCommandBuffers(commandBufferAllocateInfo)};
   //
   //
-
+  std::ranges::for_each(ranges::views::zip(frameBuffers, commandBuffers), 
+                        [&renderPass, &extent, &device](auto fBuffCBuff) {
+                          auto&& [frameBuffer, commandBuffer] = fBuffCBuff;
+                          vk::CommandBufferBeginInfo commandBufferBeginInfo;
+                          vk::RenderPassBeginInfo renderPassBeginInfo;
+                          renderPassBeginInfo.renderPass = renderPass;
+                          renderPassBeginInfo.framebuffer = frameBuffer;
+                          renderPassBeginInfo.renderArea.offset = vk::Offset2D{0,0};
+                          renderPassBeginInfo.renderArea.extent = extent;
+                          vk::ClearValue clearColor{std::array{0.0f, 0.0f, 0.0f, 1.0f}}; // black
+                          renderPassBeginInfo.clearValueCount = 1;
+                          renderPassBeginInfo.pClearValues = &clearColor;
+                          //commandBuffer.beginRenderPass(&renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+                        });
   //
   return qapp.exec();
 }

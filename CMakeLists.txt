@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(VulkanRenderer)
 
-#function for building sprv shaders
+#function for building shaders
 function(add_shader TARGET SHADER)
     find_program(GLSLC glslc)
 
@@ -28,7 +28,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 #setup conan
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup(TARGETS)
+conan_basic_setup()
 
 #handle locating external dependencies
 find_package(Vulkan REQUIRED)
@@ -45,3 +45,4 @@ add_shader(main triangle.frag)
 #link in external dependencies
 target_link_libraries(main Vulkan::Vulkan)
 target_link_libraries(main Qt5::Widgets)
+target_link_libraries(main ${CONAN_LIBS})
