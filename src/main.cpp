@@ -1,9 +1,9 @@
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 
 #include <QApplication>
 #include <QVulkanInstance>
 #include <QWindow>
-#include <QDir>
 
 #include <range/v3/all.hpp>
 
@@ -25,9 +25,17 @@ public:
     }
     this->setVulkanInstance(&this->qVkInstance);
   }
+  void setRenderer(const std::function<void()>& renderer) {
+    this->render = renderer;
+  }
 private:
   QVulkanInstance qVkInstance;
-  //void exposeEvent(QExposeEvent*) override;
+  std::function<void()> render;
+  void exposeEvent(QExposeEvent*) override {
+    if(this->isExposed()) {
+      this->render();
+    }
+  };
   //void resizeEvent(QResizeEvent*) override;
   //bool event(QEvent*) override;
 };
@@ -145,6 +153,15 @@ int main(int argc, char** argv) {
   renderPassInfo.pAttachments = &colorAttachmentDescription;
   renderPassInfo.subpassCount = 1;
   renderPassInfo.pSubpasses = &basicSubpass;
+  vk::SubpassDependency subpassDependency;
+  subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+  subpassDependency.dstSubpass = 0;
+  subpassDependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+  subpassDependency.srcAccessMask = vk::AccessFlagBits::eNoneKHR;
+  subpassDependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+  subpassDependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+  renderPassInfo.dependencyCount = 1;
+  renderPassInfo.pDependencies = &subpassDependency;
   vk::RenderPass renderPass = device.createRenderPass(renderPassInfo);
   //
   //
@@ -212,7 +229,7 @@ int main(int argc, char** argv) {
   vk::PipelineLayout pipelineLayout = device.createPipelineLayout(pipelineLayoutInfo);
   //
   // End Fixed function pipeline setup
-  // Setup shader pipelin
+  // Setup shader pipeline
   std::function<std::vector<uint32_t>(const std::filesystem::path&)> getShader = 
     [](const std::filesystem::path& filepath) {
       std::vector<uint32_t> fileData;
@@ -228,13 +245,16 @@ int main(int argc, char** argv) {
       }
     };
   auto triangleVertData{getShader("shaders/triangle.vert.spv")};
-  auto triangleFragData{getShader("shaders/trinagle.frag.spv")};
+  auto triangleFragData{getShader("shaders/triangle.frag.spv")};
   vk::ShaderModuleCreateInfo triangleVertModuleInfo;
   vk::ShaderModuleCreateInfo triangleFragModuleInfo;
   triangleVertModuleInfo.setCode(triangleVertData);
   triangleFragModuleInfo.setCode(triangleFragData);
+  std::cout << "vert\n";
   vk::ShaderModule triangleVertShader{device.createShaderModule(triangleVertModuleInfo)};
+  std::cout << "bet\n";
   vk::ShaderModule triangleFragShader{device.createShaderModule(triangleFragModuleInfo)};
+  std::cout << "frag\n";
   vk::PipelineShaderStageCreateInfo shaderTriangleVertPipelineInfo;
   vk::PipelineShaderStageCreateInfo shaderTriangleFragPipelineInfo;
   shaderTriangleVertPipelineInfo.stage = vk::ShaderStageFlagBits::eVertex;
@@ -247,7 +267,7 @@ int main(int argc, char** argv) {
   // Actually instantiate the pipeline
   vk::GraphicsPipelineCreateInfo graphicsPipelineInfo;
   graphicsPipelineInfo.stageCount = shaderPipelineInfo.size();
-  graphicsPipelineInfo.pStages = shaderPipelineInfo.data(); // TODO setup shaders
+  graphicsPipelineInfo.pStages = shaderPipelineInfo.data();
   graphicsPipelineInfo.pVertexInputState = &vertexInputInfo;
   graphicsPipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
   graphicsPipelineInfo.pViewportState = &viewPortStateInfo;
@@ -303,5 +323,33 @@ int main(int argc, char** argv) {
     //
   }
   //
+  
+  vk::SemaphoreCreateInfo semaphoreInfo;
+  vk::Semaphore imageIsAvailable{device.createSemaphore(semaphoreInfo)};
+  vk::Semaphore renderingFinished{device.createSemaphore(semaphoreInfo)};
+
+  auto drawFrame = [&device, &swapChain, &imageIsAvailable, &commandBuffers, &renderingFinished, &graphicsPipeline]() {
+    uint32_t imageIndex = device.acquireNextImageKHR(swapChain, UINT64_MAX, imageIsAvailable, VK_NULL_HANDLE).value;
+    vk::SubmitInfo submitInfo;
+    std::array<vk::PipelineStageFlags, 1> waitStages{vk::PipelineStageFlagBits::eColorAttachmentOutput};
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &imageIsAvailable;
+    submitInfo.pWaitDstStageMask = waitStages.data();
+    submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &renderingFinished;
+    vk::Queue queue = device.getQueue(0, 0);
+    auto idk = queue.submit(1, &submitInfo, VK_NULL_HANDLE); // not sure what this returns
+    vk::PresentInfoKHR presentInfo;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = &renderingFinished;
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = &swapChain;
+    presentInfo.pImageIndices = &imageIndex;
+    idk = queue.presentKHR(presentInfo); // Pretty sure this returns the same type as submit
+  };
+
+  vkWindow.setRenderer(drawFrame);
+
   return qapp.exec();
 }
