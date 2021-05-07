@@ -30,14 +30,22 @@ public:
   }
 private:
   QVulkanInstance qVkInstance;
-  std::function<void()> render;
+  std::function<void()> render = [](){};
   void exposeEvent(QExposeEvent*) override {
     if(this->isExposed()) {
       this->render();
     }
   };
   //void resizeEvent(QResizeEvent*) override;
-  //bool event(QEvent*) override;
+  bool event(QEvent* e) override {
+    switch(e->type()) {
+    case QEvent::UpdateRequest:
+      std::cout << "test";
+      this->render();
+      break;
+    }
+    return true;
+  }
 };
 
 int main(int argc, char** argv) {
@@ -46,6 +54,9 @@ int main(int argc, char** argv) {
   std::array<const char*, 3> instExtensions{VK_KHR_SURFACE_EXTENSION_NAME, "VK_KHR_surface", "VK_KHR_xcb_surface"};
   instanceInfo.enabledExtensionCount = instExtensions.size();
   instanceInfo.ppEnabledExtensionNames = instExtensions.data();
+  std::array<const char*, 1> instLayers{"VK_LAYER_KHRONOS_validation"};
+  instanceInfo.enabledLayerCount = instLayers.size();
+  instanceInfo.ppEnabledLayerNames = instLayers.data();
   vk::Instance instance{vk::createInstance(instanceInfo)};
   std::vector<vk::PhysicalDevice> physDevices{instance.enumeratePhysicalDevices()};
   vk::PhysicalDevice physDevice{physDevices[0]}; // Just hardcoded the index for a gpu that should have vulkan support.
@@ -233,28 +244,35 @@ int main(int argc, char** argv) {
   std::function<std::vector<uint32_t>(const std::filesystem::path&)> getShader = 
     [](const std::filesystem::path& filepath) {
       std::vector<uint32_t> fileData;
-      std::ifstream shaderFile(filepath, std::ios::ate | std::ios::binary);
+      std::ifstream shaderFile(filepath, std::ios::binary | std::ios::ate);
       if(!shaderFile.is_open()) {
         return fileData;
-      } else {
-        std::size_t fileSize{static_cast<std::size_t>(shaderFile.tellg())};
+      } else { // this is beyond ugly.
+        auto fileSize{shaderFile.tellg()};
         shaderFile.seekg(0);
-        fileData.reserve(fileSize);
-        shaderFile.read(reinterpret_cast<char*>(fileData.data()), fileSize);
+        std::vector<char> tmp;
+        tmp.resize(fileSize);
+        tmp.assign(std::istreambuf_iterator<char>(shaderFile), std::istreambuf_iterator<char>());
+        constexpr int resizeAmount = sizeof(uint32_t)/sizeof(char);
+        fileData.resize(fileSize/resizeAmount);
+        std::memcpy(fileData.data(), tmp.data(), tmp.size());
         return fileData;
       }
     };
-  auto triangleVertData{getShader("shaders/triangle.vert.spv")};
-  auto triangleFragData{getShader("shaders/triangle.frag.spv")};
+
+  
+  auto triangleVertData{getShader(std::filesystem::absolute("bin/shaders/triangle.vert.spv"))};
+  auto triangleFragData{getShader(std::filesystem::absolute("bin/shaders/triangle.frag.spv"))};
   vk::ShaderModuleCreateInfo triangleVertModuleInfo;
   vk::ShaderModuleCreateInfo triangleFragModuleInfo;
-  triangleVertModuleInfo.setCode(triangleVertData);
-  triangleFragModuleInfo.setCode(triangleFragData);
-  std::cout << "vert\n";
+  triangleVertModuleInfo.pCode = triangleVertData.data();
+  triangleVertModuleInfo.codeSize = triangleVertData.size()*4; // multiply by 4 on size since the size expects num bytes.
+  triangleFragModuleInfo.pCode = triangleFragData.data();
+  triangleFragModuleInfo.codeSize = triangleFragData.size()*4;
+  std::cout << "foo" << "\n";
   vk::ShaderModule triangleVertShader{device.createShaderModule(triangleVertModuleInfo)};
-  std::cout << "bet\n";
   vk::ShaderModule triangleFragShader{device.createShaderModule(triangleFragModuleInfo)};
-  std::cout << "frag\n";
+  std::cout << "foo" << "\n";
   vk::PipelineShaderStageCreateInfo shaderTriangleVertPipelineInfo;
   vk::PipelineShaderStageCreateInfo shaderTriangleFragPipelineInfo;
   shaderTriangleVertPipelineInfo.stage = vk::ShaderStageFlagBits::eVertex;
@@ -292,6 +310,7 @@ int main(int argc, char** argv) {
                            frameBufferInfo.layers = 1;
                            return device.createFramebuffer(frameBufferInfo);
                          });
+
   //Setup command buffers.
   vk::CommandPoolCreateInfo commandPoolInfo;
   commandPoolInfo.queueFamilyIndex = 0;
@@ -329,6 +348,7 @@ int main(int argc, char** argv) {
   vk::Semaphore renderingFinished{device.createSemaphore(semaphoreInfo)};
 
   auto drawFrame = [&device, &swapChain, &imageIsAvailable, &commandBuffers, &renderingFinished, &graphicsPipeline]() {
+    std::cout << "drawing\n";
     uint32_t imageIndex = device.acquireNextImageKHR(swapChain, UINT64_MAX, imageIsAvailable, VK_NULL_HANDLE).value;
     vk::SubmitInfo submitInfo;
     std::array<vk::PipelineStageFlags, 1> waitStages{vk::PipelineStageFlagBits::eColorAttachmentOutput};
@@ -348,8 +368,9 @@ int main(int argc, char** argv) {
     presentInfo.pImageIndices = &imageIndex;
     idk = queue.presentKHR(presentInfo); // Pretty sure this returns the same type as submit
   };
-
   vkWindow.setRenderer(drawFrame);
 
-  return qapp.exec();
+  return 0;
+
+  //return qapp.exec();
 }
