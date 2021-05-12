@@ -15,6 +15,8 @@
 #include <filesystem>
 #include <ranges>
 
+#include <unistd.h>
+
 class VulkanWindow : public QWindow {
 public:
   VulkanWindow(const vk::Instance& instance) {
@@ -25,24 +27,27 @@ public:
     }
     this->setVulkanInstance(&this->qVkInstance);
   }
-  void setRenderer(const std::function<void()>& renderer) {
+  void setRenderer(const std::function<void(VulkanWindow&)>& renderer) {
     this->render = renderer;
   }
 private:
   QVulkanInstance qVkInstance;
-  std::function<void()> render = [](){};
+  std::function<void(VulkanWindow&)> render = [](auto&){};
   void exposeEvent(QExposeEvent*) override {
     if(this->isExposed()) {
-      this->render();
+      this->render(*this);
     }
   };
   //void resizeEvent(QResizeEvent*) override;
   bool event(QEvent* e) override {
     switch(e->type()) {
-    case QEvent::UpdateRequest:
-      std::cout << "test";
-      this->render();
+    case QEvent::UpdateRequest: {
+      this->render(*this);
       break;
+    }
+    case QEvent::PlatformSurface: {
+      break;
+	}
     }
     return true;
   }
@@ -51,20 +56,21 @@ private:
 int main(int argc, char** argv) {
   // Basic instance setup and getting my gpu
   vk::InstanceCreateInfo instanceInfo;
-  std::array<const char*, 3> instExtensions{VK_KHR_SURFACE_EXTENSION_NAME, "VK_KHR_surface", "VK_KHR_xcb_surface"};
+  std::array instExtensions{VK_KHR_SURFACE_EXTENSION_NAME, "VK_KHR_surface", "VK_KHR_xcb_surface"};
   instanceInfo.enabledExtensionCount = instExtensions.size();
   instanceInfo.ppEnabledExtensionNames = instExtensions.data();
-  std::array<const char*, 1> instLayers{"VK_LAYER_KHRONOS_validation"};
+  std::array instLayers{"VK_LAYER_KHRONOS_validation"};
   instanceInfo.enabledLayerCount = instLayers.size();
   instanceInfo.ppEnabledLayerNames = instLayers.data();
   vk::Instance instance{vk::createInstance(instanceInfo)};
   std::vector<vk::PhysicalDevice> physDevices{instance.enumeratePhysicalDevices()};
   vk::PhysicalDevice physDevice{physDevices[0]}; // Just hardcoded the index for a gpu that should have vulkan support.
   //
+  
   // Queue setup to do some work.
   vk::DeviceQueueCreateInfo queueInfo;
   queueInfo.queueFamilyIndex = 0; // Hardcoded this queue family because I know it supports everything I want.
-  std::array<float, 1> queuePriorities{1.0f};
+  std::array queuePriorities{1.0f};
   queueInfo.queueCount = 1;
   queueInfo.pQueuePriorities = queuePriorities.data();
   //
@@ -72,7 +78,7 @@ int main(int argc, char** argv) {
   vk::DeviceCreateInfo deviceInfo;
   deviceInfo.queueCreateInfoCount = 1;
   deviceInfo.pQueueCreateInfos = &queueInfo;
-  std::array<const char*, 2> devExtensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_swapchain"};
+  std::array devExtensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME, "VK_KHR_swapchain"};
   deviceInfo.enabledExtensionCount = devExtensions.size();
   deviceInfo.ppEnabledExtensionNames = devExtensions.data();
   vk::Device device{physDevice.createDevice(deviceInfo)};
@@ -80,12 +86,17 @@ int main(int argc, char** argv) {
   // Setup qt stuff
   QGuiApplication qapp(argc, argv);
   VulkanWindow vkWindow(instance);
-  vkWindow.resize(100,100);
+  vkWindow.resize(1918,1078);
   vkWindow.show(); // you have to show the window before you can get it's surface.
   //
   // Fetch surface and info.
   vk::SurfaceKHR surface{QVulkanInstance::surfaceForWindow(&vkWindow)};
   vk::SurfaceCapabilitiesKHR surfaceCap{physDevice.getSurfaceCapabilitiesKHR(surface)};
+  //check for surface support to shut up validation layers
+  if(!physDevice.getSurfaceSupportKHR(0, surface)) {
+    //TODO blow up
+  }
+  //
   //
   // Compute the current extent
   VkExtent2D extent{
@@ -94,7 +105,7 @@ int main(int argc, char** argv) {
   };
   extent.width = std::max(surfaceCap.minImageExtent.width,
                           std::min(surfaceCap.maxImageExtent.width, extent.width));
-  extent.width = std::max(surfaceCap.minImageExtent.height,
+  extent.height = std::max(surfaceCap.minImageExtent.height,
                           std::min(surfaceCap.maxImageExtent.height, extent.height));
   //
   // Create SwapChain
@@ -138,7 +149,7 @@ int main(int argc, char** argv) {
   // Render pass setup
   // Basic subpass setup
   // Color buffer attachment
-  vk::AttachmentDescription colorAttachmentDescription;
+  vk::AttachmentDescription colorAttachmentDescription{};
   colorAttachmentDescription.format = vk::Format::eB8G8R8A8Srgb;
   colorAttachmentDescription.samples = vk::SampleCountFlagBits::e1;
   colorAttachmentDescription.loadOp = vk::AttachmentLoadOp::eClear;
@@ -259,32 +270,31 @@ int main(int argc, char** argv) {
         return fileData;
       }
     };
-
-  
   auto triangleVertData{getShader(std::filesystem::absolute("bin/shaders/triangle.vert.spv"))};
   auto triangleFragData{getShader(std::filesystem::absolute("bin/shaders/triangle.frag.spv"))};
-  vk::ShaderModuleCreateInfo triangleVertModuleInfo;
-  vk::ShaderModuleCreateInfo triangleFragModuleInfo;
+  vk::ShaderModuleCreateInfo triangleVertModuleInfo{};
+  vk::ShaderModuleCreateInfo triangleFragModuleInfo{};
   triangleVertModuleInfo.pCode = triangleVertData.data();
   triangleVertModuleInfo.codeSize = triangleVertData.size()*4; // multiply by 4 on size since the size expects num bytes.
   triangleFragModuleInfo.pCode = triangleFragData.data();
   triangleFragModuleInfo.codeSize = triangleFragData.size()*4;
-  std::cout << "foo" << "\n";
   vk::ShaderModule triangleVertShader{device.createShaderModule(triangleVertModuleInfo)};
   vk::ShaderModule triangleFragShader{device.createShaderModule(triangleFragModuleInfo)};
-  std::cout << "foo" << "\n";
   vk::PipelineShaderStageCreateInfo shaderTriangleVertPipelineInfo;
   vk::PipelineShaderStageCreateInfo shaderTriangleFragPipelineInfo;
   shaderTriangleVertPipelineInfo.stage = vk::ShaderStageFlagBits::eVertex;
   shaderTriangleFragPipelineInfo.stage = vk::ShaderStageFlagBits::eFragment;
   shaderTriangleVertPipelineInfo.pName = "main";
   shaderTriangleFragPipelineInfo.pName = "main";
+  shaderTriangleVertPipelineInfo.module = triangleVertShader;
+  shaderTriangleFragPipelineInfo.module = triangleFragShader;
   std::array<vk::PipelineShaderStageCreateInfo, 2> shaderPipelineInfo{shaderTriangleVertPipelineInfo,
     shaderTriangleFragPipelineInfo};
   //
   // Actually instantiate the pipeline
   vk::GraphicsPipelineCreateInfo graphicsPipelineInfo;
   graphicsPipelineInfo.stageCount = shaderPipelineInfo.size();
+
   graphicsPipelineInfo.pStages = shaderPipelineInfo.data();
   graphicsPipelineInfo.pVertexInputState = &vertexInputInfo;
   graphicsPipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
@@ -325,6 +335,7 @@ int main(int argc, char** argv) {
   for(auto&& [frameBuffer, commandBuffer] : ranges::views::zip(frameBuffers, commandBuffers)) {
     // Setup recording into command buffer
     vk::CommandBufferBeginInfo commandBufferBeginInfo;
+    commandBuffer.begin(commandBufferBeginInfo);
     vk::RenderPassBeginInfo renderPassBeginInfo;
     renderPassBeginInfo.renderPass = renderPass;
     renderPassBeginInfo.framebuffer = frameBuffer;
@@ -339,38 +350,46 @@ int main(int argc, char** argv) {
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
     commandBuffer.draw(3, 1, 0, 0);
     commandBuffer.endRenderPass();
+    commandBuffer.end();
     //
   }
   //
-  
-  vk::SemaphoreCreateInfo semaphoreInfo;
-  vk::Semaphore imageIsAvailable{device.createSemaphore(semaphoreInfo)};
-  vk::Semaphore renderingFinished{device.createSemaphore(semaphoreInfo)};
-
-  auto drawFrame = [&device, &swapChain, &imageIsAvailable, &commandBuffers, &renderingFinished, &graphicsPipeline]() {
-    std::cout << "drawing\n";
-    uint32_t imageIndex = device.acquireNextImageKHR(swapChain, UINT64_MAX, imageIsAvailable, VK_NULL_HANDLE).value;
+  auto drawFrame = [&device,
+                    &swapChain,
+                    &commandBuffers,
+                    &graphicsPipeline] (VulkanWindow& drawWindow) {
+    vk::SemaphoreCreateInfo imageIsAvailableInfo;
+    vk::SemaphoreCreateInfo renderingFinishedInfo;
+    vk::Semaphore imageIsAvailable{device.createSemaphore(imageIsAvailableInfo)};
+    vk::Semaphore renderingFinished{device.createSemaphore(renderingFinishedInfo)};
+    auto imageIndex = device.acquireNextImageKHR(swapChain, UINT64_MAX, imageIsAvailable, VK_NULL_HANDLE).value;
     vk::SubmitInfo submitInfo;
     std::array<vk::PipelineStageFlags, 1> waitStages{vk::PipelineStageFlagBits::eColorAttachmentOutput};
+    std::array waitSemaphore = {imageIsAvailable};
     submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &imageIsAvailable;
+    submitInfo.pWaitSemaphores = waitSemaphore.data();
     submitInfo.pWaitDstStageMask = waitStages.data();
     submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+    submitInfo.commandBufferCount = 1;
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &renderingFinished;
+    std::array signalSemaphore = {renderingFinished};
+    submitInfo.pSignalSemaphores = signalSemaphore.data();
     vk::Queue queue = device.getQueue(0, 0);
-    auto idk = queue.submit(1, &submitInfo, VK_NULL_HANDLE); // not sure what this returns
+    if(vk::Result::eSuccess != queue.submit(1, &submitInfo, VK_NULL_HANDLE)) { // submit draw work to queue
+      //TODO blow up
+    }; 
     vk::PresentInfoKHR presentInfo;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &renderingFinished;
+    presentInfo.pWaitSemaphores = signalSemaphore.data();
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapChain;
     presentInfo.pImageIndices = &imageIndex;
-    idk = queue.presentKHR(presentInfo); // Pretty sure this returns the same type as submit
+    if(vk::Result::eSuccess != queue.presentKHR(&presentInfo)) { // present queue
+      //TODO blow up
+    }
+    drawWindow.requestUpdate();
   };
   vkWindow.setRenderer(drawFrame);
-
-  return 0;
-
-  //return qapp.exec();
+  vkWindow.requestUpdate();
+  return qapp.exec();
 }
